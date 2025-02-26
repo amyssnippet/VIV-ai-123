@@ -20,7 +20,7 @@ export default function ChatInterface() {
 
     try {
       const searchResult = await axios.post(
-        "http://ec2-13-60-168-247.eu-north-1.compute.amazonaws.com:11434/api/chat",
+        "https://ec2-13-60-168-247.eu-north-1.compute.amazonaws.com:11434/api/chat",
         {
           model: "xIn", // Default model
           messages: [{ role: "user", content: inputValue }],
