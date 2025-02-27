@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { Navbar, Container, Button, Form, InputGroup, Nav, Dropdown, Spinner } from "react-bootstrap";
 import { Search, Paperclip, Mic, Eye, Lightbulb, FileText, ListTodo, MoreHorizontal } from "lucide-react";
-import axios from "axios";
-import ReactMarkdown from 'react-markdown';  // Import react-markdown to render markdown
+import ollama from "ollama"; // Import Ollama
+import ReactMarkdown from "react-markdown";
 
 export default function ChatInterface() {
   const [inputValue, setInputValue] = useState(""); // User input
@@ -13,89 +13,48 @@ export default function ChatInterface() {
 
   // Function to handle search (sending user input to the bot)
   const handleSearch = async () => {
-    if (inputValue.trim() === "") return; // Prevent sending empty messages
+    if (inputValue.trim() === "") return;
     const newMessage = { sender: "user", content: inputValue };
-    setChatHistory((prevHistory) => [...prevHistory, newMessage]); // Add user message to history
-    setIsLoading(true); // Set loading state
+    setChatHistory((prevHistory) => [...prevHistory, newMessage]);
+    setIsLoading(true);
 
     try {
-      const response = await fetch(
-        "https://cors-anywhere.herokuapp.com/http://ec2-51-20-188-186.eu-north-1.compute.amazonaws.com:11434/api/chat",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            model: "xIn",
-            messages: [{ role: "user", content: inputValue }],
-            stream: true, // Enable streaming
-          }),
-        }
-      );
+      const response = await ollama.chat({
+        model: "xIn", // Change this to your Ollama model
+        messages: [{ role: "user", content: inputValue }],
+      });
 
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let botMessage = { sender: "bot", content: "" };
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        const chunk = decoder.decode(value, { stream: true }).trim();
-        const messages = chunk.split("\n").map(line => {
-          try {
-            return JSON.parse(line);
-          } catch {
-            return null;
-          }
-        }).filter(Boolean);
-
-        messages.forEach((msg) => {
-          if (msg.message && msg.message.content) {
-            botMessage.content += msg.message.content; // Append each streamed token
-            setChatHistory((prevHistory) => [
-              ...prevHistory.slice(0, -1), // Remove the last bot message
-              botMessage, // Update the message in real time
-            ]);
-          }
-        });
-      }
-
-      setIsLoading(false); // Stop loading
-      setInputValue(""); // Clear input field
+      const botMessage = { sender: "bot", content: response.message.content };
+      setChatHistory((prevHistory) => [...prevHistory, botMessage]);
     } catch (error) {
       console.error("Error fetching response", error);
-      setIsLoading(false); // Stop loading
     }
+
+    setIsLoading(false);
+    setInputValue("");
   };
 
-
-  // Function to handle reason request (sending user input with the model xIn-v2)
+  // Function to handle reason request (sending user input with model xIn-v2)
   const handleReason = async () => {
-    if (inputValue.trim() === "") return; // Prevent sending empty messages
+    if (inputValue.trim() === "") return;
     const newMessage = { sender: "user", content: inputValue };
-    setChatHistory((prevHistory) => [...prevHistory, newMessage]); // Add user message to history
-    setIsThinking(true); // Set thinking state for reasoning
+    setChatHistory((prevHistory) => [...prevHistory, newMessage]);
+    setIsThinking(true);
 
     try {
-      const searchResult = await axios.post(
-        "http://ec2-13-60-168-247.eu-north-1.compute.amazonaws.com:11434/api/chat",
-        {
-          model: "xIn-v2", // Use xIn-v2 for reasoning
-          messages: [{ role: "user", content: inputValue }],
-          stream: false,
-        }
-      );
-      const botMessage = {
-        sender: "bot",
-        content: searchResult.data.message.content,
-      };
-      setChatHistory((prevHistory) => [...prevHistory, botMessage]); // Add bot message to history
-      setIsThinking(false); // Stop thinking state
-      setInputValue(""); // Clear input field
+      const response = await ollama.chat({
+        model: "xIn-v2", // Change this to your Ollama model
+        messages: [{ role: "user", content: inputValue }],
+      });
+
+      const botMessage = { sender: "bot", content: response.message.content };
+      setChatHistory((prevHistory) => [...prevHistory, botMessage]);
     } catch (error) {
       console.error("Error fetching response", error);
-      setIsThinking(false); // Stop thinking state if there's an error
     }
+
+    setIsThinking(false);
+    setInputValue("");
   };
 
   // Function to handle voice input (using Web Speech API)
@@ -122,13 +81,6 @@ export default function ChatInterface() {
     }
   };
 
-  // Placeholder functions for action buttons
-  const handleAnalyzeImages = () => alert("Analyze images functionality coming soon!");
-  const handleBrainstorm = () => alert("Brainstorm functionality coming soon!");
-  const handleSummarizeText = () => alert("Summarize text functionality coming soon!");
-  const handleMakePlan = () => alert("Make a plan functionality coming soon!");
-  const handleMore = () => alert("More functionality coming soon!");
-
   return (
     <div className="min-h-screen bg-gray-900 text-white" style={{ background: "#101826", display: "flex", flexDirection: "column" }}>
       {/* Navigation */}
@@ -142,9 +94,7 @@ export default function ChatInterface() {
             </Dropdown>
           </Navbar.Brand>
           <Nav className="ms-auto gap-2">
-            <Button variant="dark" className="border-0">
-              Log in
-            </Button>
+            <Button variant="dark" className="border-0">Log in</Button>
             <Button variant="light">Sign up</Button>
           </Nav>
         </Container>
@@ -152,30 +102,23 @@ export default function ChatInterface() {
 
       {/* Main Content */}
       <Container className="d-flex flex-column align-items-center justify-content-center flex-grow-1" style={{ minHeight: "calc(100vh - 150px)" }}>
-        {/* Conditionally Render "What can I help with?" */}
-        {chatHistory.length === 0 && (
-          <h1 className="mb-4 text-4xl font-bold">What can I help with?</h1>
-        )}
+        {chatHistory.length === 0 && <h1 className="mb-4 text-4xl font-bold">What can I help with?</h1>}
 
-        {/* Chat History - Only display if there are chats */}
-        <div
-          className="w-100 max-w-3xl bg-grey rounded-5 p-4"
+        {/* Chat History */}
+        <div className="w-100 max-w-3xl bg-grey rounded-5 p-4"
           style={{
             background: "#1E2837",
             maxHeight: "46vh",
-            overflowY: chatHistory.length > 0 ? "scroll" : "hidden", // Conditionally hide scroll when no messages
-            display: chatHistory.length > 0 ? "block" : "none", // Hide chat history if no chats
-          }}
-        >
+            overflowY: chatHistory.length > 0 ? "scroll" : "hidden",
+            display: chatHistory.length > 0 ? "block" : "none",
+          }}>
           {chatHistory.map((message, index) => (
             <div key={index} className={`d-flex ${message.sender === "user" ? "justify-content-end" : "justify-content-start"} mb-3`}>
-              <div
-                className={`p-3 rounded-3 ${message.sender === "user" ? "bg-blue-500 text-white" : "bg-gray-600 text-white"}`}
+              <div className={`p-3 rounded-3 ${message.sender === "user" ? "bg-blue-500 text-white" : "bg-gray-600 text-white"}`}
                 style={{
                   maxWidth: "70%",
-                  backgroundColor: message.sender === "user" ? "" : "#101826", // Dynamically set background color
-                }}
-              >
+                  backgroundColor: message.sender === "user" ? "" : "#101826",
+                }}>
                 <ReactMarkdown children={message.content} />
               </div>
             </div>
@@ -203,41 +146,13 @@ export default function ChatInterface() {
               <Paperclip size={20} />
               <input type="file" style={{ display: "none" }} onChange={handleFileAttachment} />
             </Button>
-            <Button variant="dark" className="rounded-pill ms-2" onClick={handleSearch}>
-              Search
-            </Button>
-            <Button variant="dark" className="rounded-pill ms-2" onClick={handleReason}>
-              Reason
-            </Button>
+            <Button variant="dark" className="rounded-pill ms-2" onClick={handleSearch}>Search</Button>
+            <Button variant="dark" className="rounded-pill ms-2" onClick={handleReason}>Reason</Button>
             <Button variant="light" className="rounded-pill ms-2" onClick={handleVoiceInput}>
               <Mic size={20} />
               {isVoiceActive ? "Stop Voice" : "Voice"}
             </Button>
           </InputGroup>
-
-          {/* Action Buttons */}
-          <div className="d-flex justify-content-center gap-2 flex-wrap">
-            <Button variant="dark" className="d-flex align-items-center gap-2" onClick={handleAnalyzeImages}>
-              <Eye size={16} />
-              Analyze images
-            </Button>
-            <Button variant="dark" className="d-flex align-items-center gap-2" onClick={handleBrainstorm}>
-              <Lightbulb size={16} />
-              Brainstorm
-            </Button>
-            <Button variant="dark" className="d-flex align-items-center gap-2" onClick={handleSummarizeText}>
-              <FileText size={16} />
-              Summarize text
-            </Button>
-            <Button variant="dark" className="d-flex align-items-center gap-2" onClick={handleMakePlan}>
-              <ListTodo size={16} />
-              Make a plan
-            </Button>
-            <Button variant="dark" className="d-flex align-items-center gap-2" onClick={handleMore}>
-              <MoreHorizontal size={16} />
-              More
-            </Button>
-          </div>
         </div>
       </Container>
 
@@ -245,14 +160,9 @@ export default function ChatInterface() {
       <footer className="fixed bottom-0 w-100 p-4 text-center text-gray-400">
         <small>
           By messaging ViV, you agree to our{" "}
-          <a href="#" className="text-white">
-            Terms
-          </a>{" "}
+          <a href="#" className="text-white">Terms</a>{" "}
           and have read our{" "}
-          <a href="#" className="text-white">
-            Privacy Policy
-          </a>
-          .
+          <a href="#" className="text-white">Privacy Policy</a>.
         </small>
       </footer>
     </div>
