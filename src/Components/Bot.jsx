@@ -19,21 +19,47 @@ export default function ChatInterface() {
     setIsLoading(true); // Set loading state
 
     try {
-      const searchResult = await axios.post(
-        "https://api.innobharat.org/api/chat",
+      const response = await fetch(
+        "https://cors-anywhere.herokuapp.com/http://ec2-51-20-188-186.eu-north-1.compute.amazonaws.com:11434/api/chat",
         {
-          model: "xIn", // Default model
-          messages: [{ role: "user", content: inputValue }],
-          stream: false,
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: "xIn",
+            messages: [{ role: "user", content: inputValue }],
+            stream: true, // Enable streaming
+          }),
         }
       );
-      console.log(searchResult);
-      
-      const botMessage = {
-        sender: "bot",
-        content: searchResult.data.message.content,
-      };
-      setChatHistory((prevHistory) => [...prevHistory, botMessage]); // Add bot message to history
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let botMessage = { sender: "bot", content: "" };
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value, { stream: true }).trim();
+        const messages = chunk.split("\n").map(line => {
+          try {
+            return JSON.parse(line);
+          } catch {
+            return null;
+          }
+        }).filter(Boolean);
+
+        messages.forEach((msg) => {
+          if (msg.message && msg.message.content) {
+            botMessage.content += msg.message.content; // Append each streamed token
+            setChatHistory((prevHistory) => [
+              ...prevHistory.slice(0, -1), // Remove the last bot message
+              botMessage, // Update the message in real time
+            ]);
+          }
+        });
+      }
+
       setIsLoading(false); // Stop loading
       setInputValue(""); // Clear input field
     } catch (error) {
@@ -41,6 +67,7 @@ export default function ChatInterface() {
       setIsLoading(false); // Stop loading
     }
   };
+
 
   // Function to handle reason request (sending user input with the model xIn-v2)
   const handleReason = async () => {
